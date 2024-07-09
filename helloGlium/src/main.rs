@@ -119,9 +119,7 @@ fn main() {
 
         void main() {
             frag_color = vec3(1.0, uv);
-            vec3 corrected_pos = vec3(position.x, position.y - 10, position.z);
-            vec4 translation = vec4(0.0, 0.0, 50.0, 0.0);
-            gl_Position = (matrix * matrix2 * vec4(corrected_pos / 16.0, 1.0)) - translation;
+            gl_Position = (matrix * matrix2 * vec4(position / 16.0, 1.0));
             //gl_Position = vec4(position / 2.0, 1.0);
         }
     "#;
