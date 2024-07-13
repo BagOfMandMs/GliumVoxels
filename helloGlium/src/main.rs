@@ -2,9 +2,15 @@
 
 extern crate winit;
 #[macro_use] extern crate glium;
+#[macro_use] extern crate matrix;
 
 use std::{mem, str::Matches, time::Duration, time::Instant};
 use glium::Surface;
+
+pub mod camera;
+pub mod transform;
+use matrix::format::Conventional;
+use transform::{Vec3};
 
 type ChunkRow = u32;
 const CHUNKSIZE: usize = mem::size_of::<ChunkRow>() * 8;
@@ -37,10 +43,6 @@ fn rel_direction(axis: &Axis, up: bool) -> Direction{
 }
 
 
-#[derive(Copy, Clone)]
-struct Vec3 {
-    position: [f32; 3]
-}
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -56,6 +58,15 @@ fn main() {
     let x = 5;
     let mut x = x;
     x += 3;
+
+    let mat = matrix![
+        1.0, 0.0, 0.0, 0.0;
+        0.0, 1.0, 0.0, 0.0;
+        0.0, 0.0, 1.0, 0.0;
+        0.0, 0.0, 0.0, 1.0f32;
+    ];
+    let test = camera::AffineCamera {affine: matrix::format::Conventional {rows: 4, columns: 4, values: mat}};
+    test.testfunc2();
 
     // let chunk: [[[TileType; CHUNKSIZE]; CHUNKSIZE]; CHUNKSIZE] = [
     //     [[1, 1, 1, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]],
@@ -114,13 +125,12 @@ fn main() {
 
         out vec3 frag_color;
 
-        uniform mat4 matrix;
-        uniform mat4 matrix2;
+        uniform mat4 transform;
+        uniform mat4 perspective;
 
         void main() {
             frag_color = vec3(1.0, uv);
-            gl_Position = (matrix * matrix2 * vec4(position / 16.0, 1.0));
-            //gl_Position = vec4(position / 2.0, 1.0);
+            gl_Position = transform * vec4(position / 32.0, 1.0);
         }
     "#;
     
@@ -148,31 +158,48 @@ fn main() {
 
     let mut t: f32 = 0.0;
 
+    let mut x: f32 = 0.0; 
+    let mut y: f32 = 0.0;
+
     let _ = event_loop.run(move |event, window_target| {
         match event {
             winit::event::Event::WindowEvent { event, .. } => match event {
                 winit::event::WindowEvent::CloseRequested => window_target.exit(),
                 winit::event::WindowEvent::RedrawRequested => {
+                        
+                    let mut target = display.draw();
+
+                    let perspective = {
+                        let (width, height) = target.get_dimensions();
+                        let aspect_ratio = height as f32 / width as f32;
+                    
+                        let fov: f32 = 3.141592 / 3.0;
+                        let zfar = 1024.0;
+                        let znear = 0.1;
+                    
+                        let f = 1.0 / (fov / 2.0).tan();
+                    
+                        [
+                            [f *   aspect_ratio   ,    0.0,              0.0              ,   0.0],
+                            [         0.0         ,     f ,              0.0              ,   0.0],
+                            [         0.0         ,    0.0,  (zfar+znear)/(zfar-znear)    ,   1.0],
+                            [         0.0         ,    0.0, -(2.0*zfar*znear)/(zfar-znear),   0.0],
+                        ]
+                    };
 
                     let a: f32 = 0.2;
                     let uniforms = uniform! {
-                        matrix: [
-                            [ t.cos(), 0.0, t.sin(), 0.0],
-                            [0.0, 1.0, 0.0, 0.0],
-                            [-t.sin(), 0.0, t.cos(), 0.0],
-                            [0.0, 0.0, 0.0, 1.0f32],
+                        transform: [
+                            [ t.cos(),  0.0,    t.sin(),    0.0],
+                            [0.0,       1.0,    0.0,        0.0],
+                            [-t.sin(),  0.0,    t.cos(),    0.0],
+                            [0.0,       0.0,    0.0,        1.0f32],
                         ],
-                        matrix2: [
-                            [ a.cos(), a.sin(), 0.0, 0.0],
-                            [-a.sin(), a.cos(), 0.0, 0.0],
-                            [0.0, 0.0, 1.0, 0.0],
-                            [0.0, 0.0, 0.0, 1.0f32],
-                        ]
+                        perspective: perspective
                     };
 
                     t+= 0.01;
 
-                    let mut target = display.draw();
                     target.clear_color_and_depth((0.5, 0.5, 0.5, 1.0), 1.0);
 
                     
@@ -181,6 +208,18 @@ fn main() {
                     target.finish().unwrap();
                 },
                 _ => (),
+            },
+            winit::event::Event::DeviceEvent { device_id, event } => {
+                match(event) {
+                    winit::event::DeviceEvent::Key(winit::event::RawKeyEvent {physical_key: winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyW), state: winit::event::ElementState::Released}) => {
+                        println!("key event");
+                    },
+                    winit::event::DeviceEvent::MouseMotion { delta } => {
+                        x += delta.0 as f32;
+                        y += delta.1 as f32;
+                    }
+                    _ => (),
+                }
             },
             winit::event::Event::AboutToWait => {
                 window.request_redraw();
